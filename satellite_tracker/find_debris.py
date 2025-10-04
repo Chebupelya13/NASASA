@@ -9,11 +9,11 @@ SPACE_TRACK_PASSWORD = "463576Spacetrack!"
 
 
 def get_debris_filtered_satcat_final(
-        min_inclination: float,
-        max_inclination: float,
-        min_altitude_km: float,
-        max_altitude_km: float,
-        limit: int = 10
+    min_inclination: float,
+    max_inclination: float,
+    min_altitude_km: float,
+    max_altitude_km: float,
+    limit: int = 10,
 ) -> list | str:
     """
     Получает данные о космическом мусоре (DEBRIS) с Space-Track.org,
@@ -28,17 +28,15 @@ def get_debris_filtered_satcat_final(
     filters = [
         "class/satcat",
         "OBJECT_TYPE/DEBRIS",
-
         # Фильтры
         f"INCLINATION/{min_inclination}--{max_inclination}",
         f"PERIGEE/{min_altitude_km}--{max_altitude_km}",
         f"APOGEE/{min_altitude_km}--{max_altitude_km}",
-
         # Дополнительные параметры
         f"limit/{limit}",
         # ИСПРАВЛЕНО: используем поле LAUNCH для сортировки
         "orderby/LAUNCH%20desc",
-        "format/json"
+        "format/json",
     ]
 
     # Объединяем фильтры и кодируем URL
@@ -57,7 +55,7 @@ def get_debris_filtered_satcat_final(
         login_response = session.post(
             login_url,
             data={"identity": SPACE_TRACK_USERNAME, "password": SPACE_TRACK_PASSWORD},
-            timeout=15
+            timeout=15,
         )
         login_response.raise_for_status()
 
@@ -67,8 +65,10 @@ def get_debris_filtered_satcat_final(
 
         data = response.json()
 
-        if isinstance(data, dict) and ('error' in data or 'ERROR' in data):
-            return f"❌ Ошибка API Space-Track: {data.get('error') or data.get('ERROR')}"
+        if isinstance(data, dict) and ("error" in data or "ERROR" in data):
+            return (
+                f"❌ Ошибка API Space-Track: {data.get('error') or data.get('ERROR')}"
+            )
 
         # API возвращает пустой список, если ничего не найдено
         if not data:
