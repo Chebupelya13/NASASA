@@ -3,12 +3,19 @@ from datetime import datetime
 from sanic import Blueprint
 from sanic.response import json
 
-from satellite_tracker import get_all_active_satellites, calculate_orbit_congestion_by_altitude, \
-    calculate_satellite_position
+from satellite_tracker import (
+    get_all_active_satellites,
+    calculate_orbit_congestion_by_altitude,
+    calculate_satellite_position,
+)
 from utils.distance_calculation import quick_distance
-from utils.risk_calculator import calculate_collision_financial_risk, calculate_launch_collision_risk
+from utils.risk_calculator import (
+    calculate_collision_financial_risk,
+    calculate_launch_collision_risk,
+)
 
 bp = Blueprint("risks", url_prefix="/")
+
 
 @bp.get("/orbit_risk")
 async def orbit_collision_risk(request):
@@ -58,20 +65,28 @@ async def orbit_collision_risk(request):
         t_years = float(request.args["T_years"][0])
         c_full = float(request.args["C_full"][0])
         d_lost = float(request.args["D_lost"][0])
-        v_rel = float(request.args.get("V_rel")[0]) if request.args.get("V_rel") else 12.5
+        v_rel = (
+            float(request.args.get("V_rel")[0]) if request.args.get("V_rel") else 12.5
+        )
 
         all_objects = get_all_active_satellites()
-        N_objects = calculate_orbit_congestion_by_altitude(all_objects, height - 50, height + 50, 0, 180)
+        # Теперь функция возвращает (congestion_map, filtered_satellites)
+        congestion_map, _ = calculate_orbit_congestion_by_altitude(
+            all_objects, height - 50, height + 50, 0, 180
+        )
+
+        # Считаем общее количество объектов из карты загруженности
+        total_objects_in_layer = sum(data["count"] for data in congestion_map.values())
 
         orbit_risk = calculate_collision_financial_risk(
-            len(N_objects),
+            total_objects_in_layer,
             height + 50,
             height - 50,
             v_rel,
             a_effective,
             t_years,
             c_full,
-            d_lost
+            d_lost,
         )
 
         return json(orbit_risk)
@@ -79,7 +94,10 @@ async def orbit_collision_risk(request):
     except KeyError as e:
         return json({"message": f"Missing required parameter: {e.args[0]}"}, status=400)
     except (ValueError, TypeError):
-        return json({"message": "Invalid parameter type. Please provide valid numbers."}, status=400)
+        return json(
+            {"message": "Invalid parameter type. Please provide valid numbers."},
+            status=400,
+        )
 
 
 @bp.get("/takeoff_risk")
@@ -163,20 +181,26 @@ async def takeoff_collision_risk(request):
         c_total_loss = float(request.args["C_total_loss"][0])
         lat = float(request.args.get("lat")[0]) if request.args.get("lat") else None
         lon = float(request.args.get("lon")[0]) if request.args.get("lon") else None
-        v_rel = float(request.args.get("V_rel")[0]) if request.args.get("V_rel") else 12.5
+        v_rel = (
+            float(request.args.get("V_rel")[0]) if request.args.get("V_rel") else 12.5
+        )
 
-        all_objects = calculate_orbit_congestion_by_altitude(get_all_active_satellites(), 0, h_ascent, 0, 180)
+        # Теперь функция возвращает (congestion_map, filtered_satellites)
+        # Нам нужен список отфильтрованных спутников для дальнейшей обработки
+        _, filtered_satellites = calculate_orbit_congestion_by_altitude(
+            get_all_active_satellites(), 0, h_ascent, 0, 180
+        )
+
         N_objects = 0
         if lat is not None and lon is not None:
             launch_date = datetime.strptime(date_str, "%Y-%m-%d")
-            for sat_data in all_objects:
+            for sat_data in filtered_satellites:  # Используем отфильтрованный список
                 position = calculate_satellite_position(sat_data, launch_date)
                 if quick_distance(position["lat"], position["lon"], lat, lon) < 10000:
                     N_objects += 1
         else:
-            # If lat/lon are not provided, we consider all objects in the altitude range
-            N_objects = len(all_objects)
-
+            # Если lat/lon не предоставлены, считаем все объекты в диапазоне высот
+            N_objects = len(filtered_satellites)
 
         orbit_risk = calculate_launch_collision_risk(
             N_objects,
@@ -192,4 +216,7 @@ async def takeoff_collision_risk(request):
     except KeyError as e:
         return json({"message": f"Missing required parameter: {e.args[0]}"}, status=400)
     except (ValueError, TypeError):
-        return json({"message": "Invalid parameter type. Please provide valid numbers."}, status=400)
+        return json(
+            {"message": "Invalid parameter type. Please provide valid numbers."},
+            status=400,
+        )

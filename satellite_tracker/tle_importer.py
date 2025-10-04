@@ -31,12 +31,9 @@ def get_all_active_satellites() -> List[Dict[str, Any]]:
             # Извлекаем номер спутника из первой строки TLE
             sat_num = int(line1[2:7])
 
-            satellites.append({
-                "name": name,
-                "number": sat_num,
-                "line1": line1,
-                "line2": line2
-            })
+            satellites.append(
+                {"name": name, "number": sat_num, "line1": line1, "line2": line2}
+            )
 
         return satellites
 

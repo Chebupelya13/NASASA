@@ -1,7 +1,7 @@
 from skyfield.api import load, EarthSatellite
 from skyfield.timelib import Time
 from datetime import datetime, timezone
-from typing import Dict, Any, Tuple
+from typing import Dict, Any
 
 from skyfield.toposlib import wgs84
 
@@ -10,8 +10,7 @@ ts = load.timescale()
 
 
 def calculate_satellite_position(
-        sat_data: Dict[str, Any],
-        target_time: datetime
+    sat_data: Dict[str, Any], target_time: datetime
 ) -> Dict[str, float]:
     """
     Рассчитывает положение спутника (широта, долгота, высота) в заданный момент времени.
@@ -24,12 +23,14 @@ def calculate_satellite_position(
     Tuple[float, float, float]: (Широта в градусах, Долгота в градусах, Высота в км).
     """
 
-    name = sat_data.get('name', 'UNKNOWN')
-    line1 = sat_data.get('line1')
-    line2 = sat_data.get('line2')
+    name = sat_data.get("name", "UNKNOWN")
+    line1 = sat_data.get("line1")
+    line2 = sat_data.get("line2")
 
     if not line1 or not line2:
-        raise ValueError("В данных спутника отсутствуют обязательные TLE-строки ('line1' или 'line2').")
+        raise ValueError(
+            "В данных спутника отсутствуют обязательные TLE-строки ('line1' или 'line2')."
+        )
 
     try:
         # 1. Создание объекта EarthSatellite
@@ -38,9 +39,14 @@ def calculate_satellite_position(
         # 2. Преобразование объекта Python datetime в объект времени Skyfield (Time)
         # Убеждаемся, что время в UTC
         target_time = target_time.astimezone(timezone.utc)
-        t: Time = ts.utc(target_time.year, target_time.month, target_time.day,
-                         target_time.hour, target_time.minute,
-                         target_time.second + target_time.microsecond / 1_000_000.0)
+        t: Time = ts.utc(
+            target_time.year,
+            target_time.month,
+            target_time.day,
+            target_time.hour,
+            target_time.minute,
+            target_time.second + target_time.microsecond / 1_000_000.0,
+        )
 
         # 3. Расчет геоцентрического положения (вектора)
         geocentric = satellite.at(t)
@@ -58,6 +64,8 @@ def calculate_satellite_position(
         return {"lat": lat, "lon": lon, "alt_km": alt_km}
 
     except ValueError as e:
-        raise ValueError(f"Ошибка при обработке TLE или расчете положения для {name}: {e}")
+        raise ValueError(
+            f"Ошибка при обработке TLE или расчете положения для {name}: {e}"
+        )
     except Exception as e:
         raise Exception(f"Непредвиденная ошибка: {e}")

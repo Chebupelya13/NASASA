@@ -8,14 +8,14 @@ SEC_PER_YEAR = 31536000
 
 
 def calculate_collision_financial_risk(
-        N_objects: float,
-        H_upper: float,
-        H_lower: float,
-        V_rel: float,
-        A_effective: float,
-        T_years: float,
-        C_full: float,
-        D_lost: float
+    N_objects: float,
+    H_upper: float,
+    H_lower: float,
+    V_rel: float,
+    A_effective: float,
+    T_years: float,
+    C_full: float,
+    D_lost: float,
 ) -> dict:
     """
     Рассчитывает ожидаемый финансовый риск (ФР) из-за столкновения
@@ -45,7 +45,7 @@ def calculate_collision_financial_risk(
     # --- Часть 1: Расчет объема сферической оболочки (V_shell) ---
     R_upper = R_EARTH_KM + H_upper
     R_lower = R_EARTH_KM + H_lower
-    V_shell = (4 / 3) * math.pi * (R_upper ** 3 - R_lower ** 3)
+    V_shell = (4 / 3) * math.pi * (R_upper**3 - R_lower**3)
 
     if V_shell <= 0:
         return {"error": "Invalid altitude range, shell volume is zero or negative."}
@@ -68,12 +68,12 @@ def calculate_collision_financial_risk(
 
 
 def calculate_launch_collision_risk(
-        N_objects: float,
-        H_ascent: float,
-        V_rel: float,
-        A_rocket: float,
-        T_seconds: float,
-        C_total_loss: float
+    N_objects: float,
+    H_ascent: float,
+    V_rel: float,
+    A_rocket: float,
+    T_seconds: float,
+    C_total_loss: float,
 ) -> dict:
     """
     Рассчитывает ожидаемый финансовый риск (ФР) из-за столкновения
@@ -97,10 +97,12 @@ def calculate_launch_collision_risk(
 
     # --- Часть 1: Расчет объема коридора выведения (V_corridor) ---
     R_upper = R_EARTH_KM + H_ascent
-    V_corridor = (4 / 3) * math.pi * (R_upper ** 3 - R_EARTH_KM ** 3)
+    V_corridor = (4 / 3) * math.pi * (R_upper**3 - R_EARTH_KM**3)
 
     if V_corridor <= 0:
-        return {"error": "Invalid ascent altitude, corridor volume is zero or negative."}
+        return {
+            "error": "Invalid ascent altitude, corridor volume is zero or negative."
+        }
 
     # --- Часть 2: Расчет ожидаемого числа столкновений (Expected_collisions) ---
     density = N_objects / V_corridor
