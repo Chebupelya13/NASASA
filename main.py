@@ -1,5 +1,6 @@
 import satellite_tracker
 import json
+from datetime import datetime, timezone
 
 
 def main():
@@ -16,6 +17,12 @@ def main():
         print("Не удалось загрузить данные о спутниках. Завершение работы.")
         return
 
+    target_moment = datetime(2026, 12, 5, 10, 0, 0, tzinfo=timezone.utc)
+
+    position = satellite_tracker.calculate_satellite_position(tle_data[0], target_moment)
+
+
+
     print(f"Загружено TLE-данных для {len(tle_data)} спутников.")
 
     # 2. Определение параметров для анализа загруженности
@@ -25,7 +32,8 @@ def main():
     # Все наклонения
     min_inc = 0  # градусы
     max_inc = 180  # градусы
-
+    debrise = satellite_tracker.filter_debris_tle_skyfield(min_inc, max_inc, min_alt, max_alt)
+    print(debrise)
     print(f"\nРасчет загруженности для высот от {min_alt} км до {max_alt} км "
           f"и наклонений от {min_inc}° до {max_inc}°...")
 
