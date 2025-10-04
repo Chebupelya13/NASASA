@@ -38,31 +38,28 @@ def _altitude_to_mean_motion(altitude_km: float) -> float:
 
 def calculate_orbit_congestion_by_altitude(
     tle_data_dicts: List[Dict[str, Any]],
-    min_altitude_km: float,  # Минимальная высота (км)
-    max_altitude_km: float,  # Максимальная высота (км)
-    min_inclination: float,  # Минимальное Наклонение (градусы)
-    max_inclination: float,  # Максимальное Наклонение (градусы)
-) -> Dict[Tuple[float, int], Dict[str, Any]]:
+    min_altitude_km: float,
+    max_altitude_km: float,
+    min_inclination: float,
+    max_inclination: float,
+) -> Tuple[Dict[Tuple[float, int], Dict[str, Any]], List[Dict[str, Any]]]:
     """
-    Рассчитывает загруженность орбитальных слоев, используя Skyfield для точного
-    извлечения орбитальных параметров (наклонение, среднее движение) из TLE-данных.
+    Рассчитывает загруженность орбитальных слоев и возвращает как карту
+    загруженности, так и отфильтрованный список спутников.
     """
-    # Шаг 1: Преобразование заданного диапазона высот в диапазон среднего движения
-    # для последующей фильтрации.
     try:
-        # MM_MAX соответствует МИН. высоте (более высокая скорость)
         max_mean_motion_filter = _altitude_to_mean_motion(min_altitude_km)
-        # MM_MIN соответствует МАКС. высоте (более низкая скорость)
         min_mean_motion_filter = _altitude_to_mean_motion(max_altitude_km)
     except ValueError:
         print("Ошибка: Некорректный диапазон высот.")
-        return {}
+        return {}, []
 
     print(
         f"Фильтр по среднему движению (об/сут): от {min_mean_motion_filter:.4f} до {max_mean_motion_filter:.4f}"
     )
 
     congestion_map: Dict[Tuple[float, int], Dict[str, Any]] = {}
+    filtered_satellites: List[Dict[str, Any]] = []
 
     for sat_data in tle_data_dicts:
         name = sat_data.get("name", "UNKNOWN")
@@ -73,25 +70,19 @@ def calculate_orbit_congestion_by_altitude(
             continue
 
         try:
-            # Шаг 2: Создание объекта EarthSatellite из TLE-строк
             satellite = EarthSatellite(line1, line2, name, ts)
-
-            # Шаг 3: Извлечение и преобразование орбитальных параметров из модели спутника
-            # Среднее движение (no_kozai) дано в радианах/минуту.
-            # Преобразуем в обороты/сутки: (rad/min) * (1440 min/day) / (2*pi rad/rev)
             mean_motion = satellite.model.no_kozai * (1440.0 / (2 * math.pi))
-
-            # Наклонение (inclo) дано в радианах. Преобразуем в градусы.
             inclination_deg = math.degrees(satellite.model.inclo)
 
-            # Шаг 4: Фильтрация спутников по диапазонам среднего движения и наклонения
             if not (min_mean_motion_filter <= mean_motion <= max_mean_motion_filter):
                 continue
-
             if not (min_inclination <= inclination_deg <= max_inclination):
                 continue
 
-            # Шаг 5: Кластеризация и агрегация данных о загруженности
+            # Спутник прошел фильтрацию, добавляем его в список
+            filtered_satellites.append(sat_data)
+
+            # Кластеризация и агрегация
             mean_motion_bin = round(mean_motion, 1)
             inclination_bin = int(round(inclination_deg))
             cell_key = (mean_motion_bin, inclination_bin)
@@ -103,7 +94,6 @@ def calculate_orbit_congestion_by_altitude(
                     "avg_mean_motion": 0.0,
                 }
 
-            # Обновление данных в ячейке (счетчик и скользящее среднее)
             data = congestion_map[cell_key]
             current_count = data["count"]
             new_count = current_count + 1
@@ -117,8 +107,7 @@ def calculate_orbit_congestion_by_altitude(
             data["count"] = new_count
 
         except Exception as e:
-            # Пропускаем спутники, TLE которых не удалось обработать
             print(f"Ошибка при обработке спутника {name}: {e}")
             continue
 
-    return congestion_map
+    return congestion_map, filtered_satellites
