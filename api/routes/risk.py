@@ -1,4 +1,3 @@
-import readline
 from datetime import datetime
 
 from sanic import Blueprint
@@ -18,61 +17,69 @@ async def orbit_collision_risk(request):
     openapi:
     parameters:
       - name: height
-        in: path
+        in: query
         description: Высота на орбите (км)
         required: true
         schema:
           type: integer
       - name: A_effective
-        in: path
+        in: query
         description: Эффективная площадь поперечного сечения (м^2)
         schema:
           type: float
       - name: T_years
-        in: path
+        in: query
         description:  Срок службы миссии в годах
         required: true
         schema:
           type: integer
       - name: C_full
-        in: path
+        in: query
         description: Полная стоимость миссии
         required: true
         schema:
           type: integer
       - name: D_lost
-        in: path
+        in: query
         description:  Упущенный доход в случае потери спутника
         required: true
         schema:
           type: integer
       - name: V_rel
-        in: path
+        in: query
         description: Средняя относительная скорость столкновения (км/c)
         required: false
         schema:
           type: float
     """
     try:
+        height = float(request.args["height"][0])
+        a_effective = float(request.args["A_effective"][0])
+        t_years = float(request.args["T_years"][0])
+        c_full = float(request.args["C_full"][0])
+        d_lost = float(request.args["D_lost"][0])
+        v_rel = float(request.args.get("V_rel")[0]) if request.args.get("V_rel") else 12.5
+
         all_objects = get_all_active_satellites()
-        print("args", request.args)
-        N_objects = calculate_orbit_congestion_by_altitude(all_objects, float(request.args["height"][0]) - 50, float(request.args["height"][0] )+ 50, 0, 180)
+        N_objects = calculate_orbit_congestion_by_altitude(all_objects, height - 50, height + 50, 0, 180)
 
         orbit_risk = calculate_collision_financial_risk(
             len(N_objects),
-            float(request.args["height"][0]) + 50,
-            float(request.args["height"][0]) - 50,
-            float(request.args.get("V_rel")[0]) if request.args.get("V_rel") else 12.5,
-            float(request.args["A_effective"][0]),
-            float(request.args["T_years"][0]),
-            float(request.args["C_full"][0]),
-            float(request.args["D_lost"][0])
+            height + 50,
+            height - 50,
+            v_rel,
+            a_effective,
+            t_years,
+            c_full,
+            d_lost
         )
 
         return json(orbit_risk)
 
-    except KeyError:
-        return json({"message": "Invalid request"})
+    except KeyError as e:
+        return json({"message": f"Missing required parameter: {e.args[0]}"}, status=400)
+    except (ValueError, TypeError):
+        return json({"message": "Invalid parameter type. Please provide valid numbers."}, status=400)
 
 
 @bp.get("/takeoff_risk")
@@ -82,21 +89,21 @@ async def takeoff_collision_risk(request):
     openapi:
     parameters:
         - name: lat
-          in: path
+          in: query
           description: Широта мест азапуска
           required: false
           schema:
             type: float
             example: 49.99345
         - name: lon
-          in: path
+          in: query
           description: долгота мест азапуска
           required: false
           schema:
             type: float
             example: 49.99345
         - name: date
-          in: path
+          in: query
           description: Дата запуска миссии
           required: true
           schema:
@@ -149,31 +156,40 @@ async def takeoff_collision_risk(request):
             example: 1800.75
     """
     try:
-        print(request.args)
-        all_objects = calculate_orbit_congestion_by_altitude(get_all_active_satellites(), 0, float(request.args["H_ascent"][0]), 0, 180)
+        date_str = request.args["date"][0]
+        h_ascent = float(request.args["H_ascent"][0])
+        a_rocket = float(request.args["A_rocket"][0])
+        t_seconds = float(request.args["T_seconds"][0])
+        c_total_loss = float(request.args["C_total_loss"][0])
+        lat = float(request.args.get("lat")[0]) if request.args.get("lat") else None
+        lon = float(request.args.get("lon")[0]) if request.args.get("lon") else None
+        v_rel = float(request.args.get("V_rel")[0]) if request.args.get("V_rel") else 12.5
+
+        all_objects = calculate_orbit_congestion_by_altitude(get_all_active_satellites(), 0, h_ascent, 0, 180)
         N_objects = 0
-        for sat_data in all_objects:
-            position = calculate_satellite_position(sat_data, datetime.strptime(request.args["date"][0], "%Y-%m-%d"))
-            if quick_distance(
-                position["lat"],
-                position["lon"],
-                float(request.args["lat"][0]),
-                float(request.args["lon"][0]),
-            ):
-                print('y')
-                N_objects += 1
+        if lat is not None and lon is not None:
+            launch_date = datetime.strptime(date_str, "%Y-%m-%d")
+            for sat_data in all_objects:
+                position = calculate_satellite_position(sat_data, launch_date)
+                if quick_distance(position["lat"], position["lon"], lat, lon) < 10000:
+                    N_objects += 1
+        else:
+            # If lat/lon are not provided, we consider all objects in the altitude range
+            N_objects = len(all_objects)
 
 
         orbit_risk = calculate_launch_collision_risk(
             N_objects,
-            request.args["H_ascent"],
-            request.args.get("V_rel") if request.args.get("V_rel") else 12.5,
-            request.args["A_rocket"],
-            request.args["T_seconds"],
-            request.args["C_total_lose"],
+            h_ascent,
+            v_rel,
+            a_rocket,
+            t_seconds,
+            c_total_loss,
         )
 
         return json(orbit_risk)
 
-    except KeyError:
-        return json({"message": "Invalid request"})
+    except KeyError as e:
+        return json({"message": f"Missing required parameter: {e.args[0]}"}, status=400)
+    except (ValueError, TypeError):
+        return json({"message": "Invalid parameter type. Please provide valid numbers."}, status=400)
