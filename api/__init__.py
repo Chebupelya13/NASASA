@@ -1,5 +1,5 @@
 from sanic import Sanic
-from .routes.health import bp as health_blueprint
+from .routes.risk import bp as health_blueprint
 
 def create_app():
     """
