@@ -89,9 +89,6 @@ def calculate_collision_financial_risk(
     return {"financial_risk": round(financial_risk, 2), "collision_risk": P_collision}
 
 
-a = calculate_collision_financial_risk(120, 1050, 950, 12.5, 3, 2, 1000000, 500000)
-# print(a)
-
 def calculate_launch_collision_risk(
         N_objects: float,
         H_ascent: float,
@@ -155,8 +152,3 @@ def calculate_launch_collision_risk(
     financial_risk = P_collision * C_total_loss
 
     return {"financial_risk": round(financial_risk, 2), "collision_risk": P_collision}
-
-
-# a = calculate_collision_risk(350, 750, 4.5, 7, 3000, 1500300)
-
-print(a)

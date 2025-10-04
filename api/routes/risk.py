@@ -60,7 +60,7 @@ async def orbit_collision_risk(request):
 
     orbit_risk = calculate_collision_financial_risk(
         len(N_objects),
-       float( request.args["height"][0]) + 50,
+        float(request.args["height"][0]) + 50,
         float(request.args["height"][0]) - 50,
         float(request.args.get("V_rel")[0]) if request.args.get("V_rel") else 12.5,
         float(request.args["A_effective"][0]),
