@@ -53,26 +53,26 @@ async def orbit_collision_risk(request):
         schema:
           type: float
     """
-    # try:
-    all_objects = get_all_active_satellites()
-    print("args", request.args)
-    N_objects = calculate_orbit_congestion_by_altitude(all_objects, float(request.args["height"][0]) - 50, float(request.args["height"][0] )+ 50, 0, 180)
+    try:
+        all_objects = get_all_active_satellites()
+        print("args", request.args)
+        N_objects = calculate_orbit_congestion_by_altitude(all_objects, float(request.args["height"][0]) - 50, float(request.args["height"][0] )+ 50, 0, 180)
 
-    orbit_risk = calculate_collision_financial_risk(
-        len(N_objects),
-        float(request.args["height"][0]) + 50,
-        float(request.args["height"][0]) - 50,
-        float(request.args.get("V_rel")[0]) if request.args.get("V_rel") else 12.5,
-        float(request.args["A_effective"][0]),
-        float(request.args["T_years"][0]),
-        float(request.args["C_full"][0]),
-        float(request.args["D_lost"][0])
-    )
+        orbit_risk = calculate_collision_financial_risk(
+            len(N_objects),
+            float(request.args["height"][0]) + 50,
+            float(request.args["height"][0]) - 50,
+            float(request.args.get("V_rel")[0]) if request.args.get("V_rel") else 12.5,
+            float(request.args["A_effective"][0]),
+            float(request.args["T_years"][0]),
+            float(request.args["C_full"][0]),
+            float(request.args["D_lost"][0])
+        )
 
-    return json(orbit_risk)
+        return json(orbit_risk)
 
-    # except KeyError:
-    #     return json({"message": "Invalid request"})
+    except KeyError:
+        return json({"message": "Invalid request"})
 
 
 @bp.get("/takeoff_risk")
