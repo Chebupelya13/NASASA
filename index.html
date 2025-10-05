@@ -225,6 +225,25 @@
             box-shadow: 0 0 20px var(--accent-color);
             transform: scale(1.1);
         }
+
+        select {
+            width: 100%;
+            background-color: #2d1e46;
+            color: var(--text-primary);
+            border: 1px solid transparent;
+            border-radius: 0.25rem;
+            padding: 0.5rem;
+            font-family: 'Inter', sans-serif;
+            font-size: 0.875rem;
+            cursor: pointer;
+            -webkit-appearance: none;
+            -moz-appearance: none;
+            appearance: none;
+            background-image: url('data:image/svg+xml;charset=US-ASCII,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22292.4%22%20height%3D%22292.4%22%3E%3Cpath%20fill%3D%22%23E6E0FF%22%20d%3D%22M287%2069.4a17.6%2017.6%200%200%200-13-5.4H18.4c-5%200-9.3%201.8-12.9%205.4A17.6%2017.6%200%200%200%200%2082.2c0%205%201.8%209.3%205.4%2012.9l128%20127.9c3.6%203.6%207.8%205.4%2012.8%205.4s9.2-1.8%2012.8-5.4L287%2095c3.5-3.5%205.4-7.8%205.4-12.8%200-5-1.9-9.2-5.4-12.8z%22%2F%3E%3C%2Fsvg%3E');
+            background-repeat: no-repeat;
+            background-position: right 0.7em top 50%;
+            background-size: 0.65em auto;
+        }
         
         /* Right Panel: Results */
         .results-content {
@@ -553,7 +572,7 @@
     </button>
 
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             
             let updateTimer = null;
             let typewriterTimer = null;
@@ -566,7 +585,9 @@
                     cross_section: 10, 
                     lifespan: 10, 
                     cost: 250, 
-                    revenue_loss: 50, 
+                    revenue_loss: 50,
+                    launch_site: 0, // Индекс выбранного космодрома
+                    flight_time: 540, // Время полета в секундах
                 },
                 results: {
                     launch: { grade: 'B', gradeClass: 'grade-B' },
@@ -630,6 +651,8 @@
                     lifespan: "Mission Lifespan",
                     cost: "Mission Cost",
                     revenue_loss: "Revenue Loss",
+                    launch_site: "Launch Site",
+                    flight_time: "Ascent Time",
                     unit_km: "km",
                     unit_deg: "°",
                     unit_m2: "m²",
@@ -643,6 +666,8 @@
                     tooltip_lifespan: "The planned duration of the mission in years.",
                     tooltip_cost: "The total cost of the launch and the spacecraft itself in millions of dollars.",
                     tooltip_revenue_loss: "The percentage of the total mission cost that will be lost as unearned revenue if the mission fails.",
+                    tooltip_launch_site: "Select the launch site. This determines the initial latitude and longitude for the launch risk calculation.",
+                    tooltip_flight_time: "The duration of the active ascent phase in seconds, during which the spacecraft is most vulnerable.",
                     launch_risk: "Launch Risk",
                     orbital_risk: "Orbital Risk",
                     reentry_risk: "Re-entry Risk",
@@ -669,6 +694,8 @@
                     lifespan: "Срок службы",
                     cost: "Стоимость миссии",
                     revenue_loss: "Упущенный доход",
+                    launch_site: "Точка старта",
+                    flight_time: "Время полета",
                     unit_km: "км",
                     unit_deg: "°",
                     unit_m2: "м²",
@@ -682,6 +709,9 @@
                     tooltip_lifespan: "Планируемая длительность миссии в годах.",
                     tooltip_cost: "Общая стоимость запуска и самого аппарата в миллионах долларов.",
                     tooltip_revenue_loss: "Процент от полной стоимости миссии, который будет потерян в виде недополученной прибыли.",
+                    tooltip_launch_site: "Выберите место запуска. Это определяет начальную широту и долготу для расчета риска при запуске.",
+                    tooltip_flight_time: "Продолжительность активного участка полета в секундах, во время которого аппарат наиболее уязвим.",
+                    unit_seconds: "сек",
                     launch_risk: "Риск при запуске",
                     orbital_risk: "Риск на орбите",
                     reentry_risk: "Риск при возвращении",
@@ -699,13 +729,15 @@
             };
             
             const fieldsConfig = [
-                { id: 'altitude', langKey: 'altitude', min: 300, max: 2000, unitKey: 'unit_km', tooltipKey: 'tooltip_altitude' },
-                { id: 'inclination', langKey: 'inclination', min: 0, max: 180, unitKey: 'unit_deg', tooltipKey: 'tooltip_inclination' },
-                { id: 'lan', langKey: 'lan', min: 0, max: 360, unitKey: 'unit_deg', tooltipKey: 'tooltip_lan' },
-                { id: 'cross_section', langKey: 'cross_section', min: 1, max: 100, unitKey: 'unit_m2', tooltipKey: 'tooltip_cross_section' },
-                { id: 'lifespan', langKey: 'lifespan', min: 1, max: 25, unitKey: 'unit_years', tooltipKey: 'tooltip_lifespan' },
-                { id: 'cost', langKey: 'cost', min: 1, max: 1000, unitKey: 'unit_m_usd', tooltipKey: 'tooltip_cost' },
-                { id: 'revenue_loss', langKey: 'revenue_loss', min: 0, max: 100, unitKey: 'unit_percent', tooltipKey: 'tooltip_revenue_loss' },
+                { type: 'select', id: 'launch_site', langKey: 'launch_site', tooltipKey: 'tooltip_launch_site' },
+                { type: 'range', id: 'altitude', langKey: 'altitude', min: 300, max: 2000, unitKey: 'unit_km', tooltipKey: 'tooltip_altitude' },
+                { type: 'range', id: 'inclination', langKey: 'inclination', min: 0, max: 180, unitKey: 'unit_deg', tooltipKey: 'tooltip_inclination' },
+                { type: 'range', id: 'lan', langKey: 'lan', min: 0, max: 360, unitKey: 'unit_deg', tooltipKey: 'tooltip_lan' },
+                { type: 'range', id: 'cross_section', langKey: 'cross_section', min: 1, max: 100, unitKey: 'unit_m2', tooltipKey: 'tooltip_cross_section' },
+                { type: 'range', id: 'lifespan', langKey: 'lifespan', min: 1, max: 25, unitKey: 'unit_years', tooltipKey: 'tooltip_lifespan' },
+                { type: 'range', id: 'flight_time', langKey: 'flight_time', min: 300, max: 1200, step: 10, unitKey: 'unit_seconds', tooltipKey: 'tooltip_flight_time' },
+                { type: 'range', id: 'cost', langKey: 'cost', min: 1, max: 1000, unitKey: 'unit_m_usd', tooltipKey: 'tooltip_cost' },
+                { type: 'range', id: 'revenue_loss', langKey: 'revenue_loss', min: 0, max: 100, unitKey: 'unit_percent', tooltipKey: 'tooltip_revenue_loss' },
             ];
             
             const inputForm = document.getElementById('input-form');
@@ -713,9 +745,73 @@
             const subtitleEl = document.getElementById('subtitle');
             const globeContainer = document.getElementById('globe-container');
             
-            let scene, camera, renderer, earth, clouds, orbitGroup, controls;
+            let scene, camera, renderer, earth, clouds, orbitGroup, controls, launchSiteMarker;
             const earthScale = 0.8; 
             
+            function animateCameraToTarget(targetPosition) {
+                const startPosition = camera.position.clone();
+                const endPosition = targetPosition.clone().normalize().multiplyScalar(2.5); // Отодвигаемся от цели
+                const duration = 1200; // мс
+                let startTime = null;
+
+                function animate(currentTime) {
+                    if (startTime === null) startTime = currentTime;
+                    const elapsedTime = currentTime - startTime;
+                    const progress = Math.min(elapsedTime / duration, 1);
+
+                    camera.position.lerpVectors(startPosition, endPosition, progress);
+                    camera.lookAt(0, 0, 0); // Всегда смотрим на центр Земли
+
+                    if (progress < 1) {
+                        requestAnimationFrame(animate);
+                    } else {
+                         appState.isAutoRotating = true; // Возобновляем авто-вращение
+                    }
+                }
+                appState.isAutoRotating = false; // Приостанавливаем авто-вращение на время анимации
+                requestAnimationFrame(animate);
+            }
+
+            function updateLaunchSiteMarker(lat, lon) {
+                if (launchSiteMarker) {
+                    scene.remove(launchSiteMarker);
+                }
+
+                // Создаем геометрию ракеты
+                const rocketGroup = new THREE.Group();
+                const bodyGeometry = new THREE.CylinderGeometry(0.005, 0.007, 0.05, 8);
+                const bodyMaterial = new THREE.MeshPhongMaterial({ color: 0xcccccc });
+                const rocketBody = new THREE.Mesh(bodyGeometry, bodyMaterial);
+
+                const noseGeometry = new THREE.ConeGeometry(0.005, 0.02, 8);
+                const noseMaterial = new THREE.MeshPhongMaterial({ color: 0xff4500 });
+                const rocketNose = new THREE.Mesh(noseGeometry, noseMaterial);
+                rocketNose.position.y = 0.035; // Размещаем нос на вершине корпуса
+
+                rocketGroup.add(rocketBody);
+                rocketGroup.add(rocketNose);
+
+                launchSiteMarker = rocketGroup;
+
+                // Размещаем и ориентируем ракету
+                const positionVec = new THREE.Vector3();
+
+                // Преобразуем широту и долготу в сферические координаты Three.js
+                // phi - полярный угол (отклонение от полюса), 90 - широта.
+                const phi = THREE.MathUtils.degToRad(90 - lat);
+                // theta - азимутальный угол. Для стандартной текстуры Земли требуется сдвиг +90 градусов.
+                const theta = THREE.MathUtils.degToRad(lon + 90);
+
+                positionVec.setFromSphericalCoords(earthScale * 1.005, phi, theta);
+                launchSiteMarker.position.copy(positionVec);
+
+                const up = new THREE.Vector3(0, 1, 0);
+                const axis = new THREE.Vector3().copy(positionVec).normalize();
+                launchSiteMarker.quaternion.setFromUnitVectors(up, axis);
+
+                scene.add(launchSiteMarker);
+            }
+
             function hideTooltip() {
                 tooltipEl.style.visibility = 'hidden';
                 tooltipEl.style.opacity = 0;
@@ -804,9 +900,9 @@
                 const animate = () => { 
                     requestAnimationFrame(animate); 
                     if (appState.isAutoRotating) {
-                        earth.rotation.y += 0.0005;
+                        // earth.rotation.y += 0.0005; // Вращение земли остановлено
                     }
-                    clouds.rotation.y += 0.0001;
+                    clouds.rotation.y += 0.0001; // Вращаются только облака
                     controls.update(); 
                     renderer.render(scene, camera); 
                 };
@@ -846,104 +942,90 @@
                 orbitGroup.add(orbitTube);
             }
             
-            /**
- * @description Выполняет запросы к API для оценки рисков запуска и нахождения на орбите.
- * Данные для риска схода с орбиты (reentry) устанавливаются в значения по умолчанию (0 или N/A),
- * так как соответствующий API эндпоинт отсутствует.
- * @param {object} params - Объект с параметрами миссии.
- * @returns {Promise<object>} - Объект с результатами оценки рисков.
- */
-async function fetchRiskAssessment(params) {
-    const { altitude, cross_section, lifespan, cost, revenue_loss } = params;
+            function parseRiskClass(riskClass) {
+                if (!riskClass || typeof riskClass !== 'string') {
+                    return { grade: 'N/A', gradeClass: '' };
+                }
+                const grade = riskClass.charAt(0);
+                let gradeClass = '';
+                if (['A', 'B', 'C', 'D', 'E', 'F'].includes(grade)) {
+                    gradeClass = `grade-${grade}`;
+                }
+                return { grade, gradeClass };
+            }
 
-    // Параметры для /api/orbit_risk
-    const orbitParams = {
-        height: altitude,
-        A_effective: cross_section,
-        T_years: lifespan,
-        C_full: cost * 1000000,
-        D_lost: cost * 1000000 * (revenue_loss / 100)
-    };
+            async function fetchRiskAssessment(params) {
+                const { altitude, cross_section, lifespan, cost, revenue_loss, launch_site, flight_time } = params;
 
-    // Параметры для /api/takeoff_risk
-    const takeoffParams = {
-        lat: 45.96, // Космодром Байконур
-        lon: 63.30,
-        date: new Date().toISOString().slice(0, 19),
-        H_ascent: 200,
-        A_rocket: cross_section,
-        T_seconds: 540,
-        C_total_loss: cost * 1000000
-    };
+                // Параметры для /api/orbit_risk
+                const orbitParams = {
+                    height: altitude,
+                    A_effective: cross_section,
+                    T_years: lifespan,
+                    C_full: cost * 1000000,
+                    D_lost: cost * 1000000 * (revenue_loss / 100)
+                };
 
-    const orbitQuery = new URLSearchParams(orbitParams).toString();
-    const takeoffQuery = new URLSearchParams(takeoffParams).toString();
+                const selectedSite = appState.launchSites[launch_site];
 
-    try {
-        // Выполняем только два существующих запроса параллельно
-        const [orbitResponse, takeoffResponse] = await Promise.all([
-            fetch(`/api/orbit_risk?${orbitQuery}`),
-            fetch(`/api/takeoff_risk?${takeoffQuery}`)
-        ]);
+                // Параметры для /api/takeoff_risk (с динамическими значениями)
+                const takeoffParams = {
+                    lat: selectedSite.lat,
+                    lon: selectedSite.lon,
+                    date: new Date().toISOString().slice(0, 19),
+                    H_ascent: 200,
+                    A_rocket: cross_section,
+                    T_seconds: flight_time,
+                    C_total_loss: cost * 1000000
+                };
 
-        // Проверяем, что оба ответа успешны
-        if (!orbitResponse.ok || !takeoffResponse.ok) {
-            console.error('API Error: Один или несколько запросов не удались.');
-            if (!orbitResponse.ok) console.error('Orbit API Error:', await orbitResponse.text());
-            if (!takeoffResponse.ok) console.error('Takeoff API Error:', await takeoffResponse.text());
-            throw new Error('Ошибка при запросе к API');
-        }
+                const orbitQuery = new URLSearchParams(orbitParams).toString();
+                const takeoffQuery = new URLSearchParams(takeoffParams).toString();
 
-        const orbitData = await orbitResponse.json();
-        const takeoffData = await takeoffResponse.json();
+                try {
+                    // Выполняем оба запроса параллельно
+                    const [orbitResponse, takeoffResponse] = await Promise.all([
+                        fetch(`/api/orbit_risk?${orbitQuery}`),
+                        fetch(`/api/takeoff_risk?${takeoffQuery}`)
+                    ]);
 
-        // Обрабатываем данные из API
-        const launchRisk = parseRiskClass(takeoffData.risk_class);
-        const orbitalRisk = parseRiskClass(orbitData.risk_class);
+                    if (!orbitResponse.ok || !takeoffResponse.ok) {
+                        console.error('API Error: One or more requests failed.');
+                        if (!orbitResponse.ok) console.error('Orbit API Error:', await orbitResponse.json());
+                        if (!takeoffResponse.ok) console.error('Takeoff API Error:', await takeoffResponse.json());
+                        return appState.results;
+                    }
 
-        // Устанавливаем заглушки для отсутствующих данных по reentry, как вы просили
-        const reentryRisk = { grade: 'N/A', gradeClass: '' }; // Нет данных от API
+                    const orbitData = await orbitResponse.json();
+                    const takeoffData = await takeoffResponse.json();
 
-        const financialLoss = {
-            launch: Math.round(takeoffData.financial_risk || 0),
-            orbital: Math.round(orbitData.financial_risk || 0),
-            reentry: 0, // Устанавливаем финансовые потери при сходе в 0
-        };
-        financialLoss.total = financialLoss.launch + financialLoss.orbital + financialLoss.reentry;
+                    const orbitalRisk = parseRiskClass(orbitData.risk_class);
+                    const launchRisk = parseRiskClass(takeoffData.risk_class);
+                    const reentryRisk = { grade: 'A', gradeClass: 'grade-A' }; // Заглушка
+                    const mockReentryLoss = orbitParams.C_full * 0.005; // Заглушка
 
-        const totalInsurance = Math.round((takeoffData.insurance_premium || 0) + (orbitData.insurance_premium || 0));
+                    const financialLoss = {
+                        launch: Math.round(takeoffData.financial_risk),
+                        orbital: Math.round(orbitData.financial_risk),
+                        reentry: Math.round(mockReentryLoss),
+                    };
+                    financialLoss.total = financialLoss.launch + financialLoss.orbital + financialLoss.reentry;
 
-        // Возвращаем итоговый объект
-        return {
-            launch: launchRisk,
-            orbital: orbitalRisk,
-            reentry: reentryRisk,
-            financialLoss: financialLoss,
-            insurancePremium: totalInsurance,
-        };
+                    const totalInsurance = Math.round(takeoffData.insurance_premium + orbitData.insurance_premium);
 
-    } catch (error) {
-        console.error('Fetch failed:', error);
-        // В случае ошибки можно вернуть пустой или дефолтный объект, чтобы не ломать интерфейс
-        throw error;
-    }
-}
+                    return {
+                        launch: launchRisk,
+                        orbital: orbitalRisk,
+                        reentry: reentryRisk,
+                        financialLoss: financialLoss,
+                        insurancePremium: totalInsurance,
+                    };
 
-/**
- * Вспомогательная функция для преобразования класса риска.
- * @param {string} riskClass - Класс риска (например, 'A', 'B').
- * @returns {{grade: string, gradeClass: string}}
- */
-function parseRiskClass(riskClass) {
-    if (!riskClass) {
-        return { grade: 'N/A', gradeClass: '' };
-    }
-    return {
-        grade: riskClass,
-        gradeClass: `grade-${riskClass}`
-    };
-}
-
+                } catch (error) {
+                    console.error('Fetch failed:', error);
+                    return appState.results;
+                }
+            }
 
             function animateCounter(element, targetValue, duration = 1500) {
                 const start = parseInt(element.textContent.replace(/[$\s,]/g, '')) || 0;
@@ -1029,30 +1111,79 @@ function parseRiskClass(riskClass) {
                 }
             }
 
+            async function populateLaunchSites() {
+                try {
+                    const response = await fetch('/api/launch_sites');
+                    if (!response.ok) throw new Error('Failed to fetch launch sites');
+                    const sites = await response.json();
+                    appState.launchSites = sites; // Сохраняем для последующего использования
+
+                    const selectEl = document.getElementById('launch_site');
+                    selectEl.innerHTML = ''; // Очищаем
+                    sites.forEach((site, index) => {
+                        const option = document.createElement('option');
+                        option.value = index;
+                        option.textContent = site.name;
+                        if (index === appState.params.launch_site) {
+                            option.selected = true;
+                        }
+                        selectEl.appendChild(option);
+                    });
+
+                    // Устанавливаем маркер для точки по умолчанию
+                    if (sites.length > 0) {
+                        const defaultSite = sites[appState.params.launch_site];
+                        updateLaunchSiteMarker(defaultSite.lat, defaultSite.lon);
+                    }
+                } catch (error) {
+                    console.error("Could not populate launch sites:", error);
+                }
+            }
+
             function createInputFields() {
                 fieldsConfig.forEach(field => {
                     const fieldEl = document.createElement('div');
                     fieldEl.className = 'input-field';
                     
-                    fieldEl.innerHTML = `
-                        <div class="label-header">
-                            <label for="${field.id}">
-                                <span data-lang-key="${field.langKey}"></span>
-                                <svg class="tooltip-icon" data-tooltip-key="${field.tooltipKey}" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533L8.93 6.588zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg>
-                            </label>
-                            <span class="value-display" id="value-${field.id}"></span>
-                        </div>
-                        <input type="range" id="${field.id}" min="${field.min}" max="${field.max}" value="${appState.params[field.id]}" step="${field.step || 1}">`;
+                    let inputHtml;
+                    if (field.type === 'select') {
+                        inputHtml = `
+                            <div class="label-header">
+                                <label for="${field.id}">
+                                    <span data-lang-key="${field.langKey}"></span>
+                                    <svg class="tooltip-icon" data-tooltip-key="${field.tooltipKey}" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533L8.93 6.588zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg>
+                                </label>
+                            </div>
+                            <select id="${field.id}"></select>`;
+                    } else {
+                        inputHtml = `
+                            <div class="label-header">
+                                <label for="${field.id}">
+                                    <span data-lang-key="${field.langKey}"></span>
+                                    <svg class="tooltip-icon" data-tooltip-key="${field.tooltipKey}" xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="m8.93 6.588-2.29.287-.082.38.45.083c.294.07.352.176.288.469l-.738 3.468c-.194.897.105 1.319.808 1.319.545 0 1.178-.252 1.465-.598l.088-.416c-.2.176-.492.246-.686.246-.275 0-.375-.193-.304-.533L8.93 6.588zM9 4.5a1 1 0 1 1-2 0 1 1 0 0 1 2 0z"/></svg>
+                                </label>
+                                <span class="value-display" id="value-${field.id}"></span>
+                            </div>
+                            <input type="range" id="${field.id}" min="${field.min}" max="${field.max}" value="${appState.params[field.id]}" step="${field.step || 1}">`;
+                    }
+                    fieldEl.innerHTML = inputHtml;
                     
-                    const input = fieldEl.querySelector('input[type="range"]');
+                    const input = fieldEl.querySelector('input, select');
                     input.addEventListener('input', (e) => {
                         appState.params[field.id] = parseFloat(e.target.value);
-                        fieldEl.querySelector(`#value-${field.id}`).textContent = `${appState.params[field.id]} ${translations[appState.lang][field.unitKey]}`;
+                        if (field.type === 'range') {
+                           fieldEl.querySelector(`#value-${field.id}`).textContent = `${appState.params[field.id]} ${translations[appState.lang][field.unitKey]}`;
+                        }
                         
-                        throttledSliderSound(200 + appState.params[field.id]/10);
+                        throttledSliderSound(200 + Math.random() * 100);
 
-                        // Мгновенное обновление орбиты для соответствующих ползунков
-                        if (['altitude', 'inclination', 'lan'].includes(field.id)) {
+                        if (field.id === 'launch_site') {
+                            const selectedSite = appState.launchSites[e.target.value];
+                            if(selectedSite) {
+                                updateLaunchSiteMarker(selectedSite.lat, selectedSite.lon);
+                                animateCameraToTarget(launchSiteMarker.position);
+                            }
+                        } else if (['altitude', 'inclination', 'lan'].includes(field.id)) {
                            updateOrbit(appState.params.altitude, appState.params.inclination, appState.params.lan, appState.results.orbital.gradeClass);
                         }
                     });
@@ -1129,6 +1260,7 @@ function parseRiskClass(riskClass) {
             
             initGlobe();
             createInputFields();
+            await populateLaunchSites();
             setLanguage('ru');
         });
     </script>
