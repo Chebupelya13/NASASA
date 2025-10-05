@@ -846,88 +846,104 @@
                 orbitGroup.add(orbitTube);
             }
             
-            function parseRiskClass(riskClass) {
-                if (!riskClass || typeof riskClass !== 'string') {
-                    return { grade: 'N/A', gradeClass: '' };
-                }
-                const grade = riskClass.charAt(0);
-                let gradeClass = '';
-                if (['A', 'B', 'C', 'D', 'E', 'F'].includes(grade)) {
-                    gradeClass = `grade-${grade}`;
-                }
-                return { grade, gradeClass };
-            }
+            /**
+ * @description Выполняет запросы к API для оценки рисков запуска и нахождения на орбите.
+ * Данные для риска схода с орбиты (reentry) устанавливаются в значения по умолчанию (0 или N/A),
+ * так как соответствующий API эндпоинт отсутствует.
+ * @param {object} params - Объект с параметрами миссии.
+ * @returns {Promise<object>} - Объект с результатами оценки рисков.
+ */
+async function fetchRiskAssessment(params) {
+    const { altitude, cross_section, lifespan, cost, revenue_loss } = params;
 
-            async function fetchRiskAssessment(params) {
-                const { altitude, cross_section, lifespan, cost, revenue_loss } = params;
+    // Параметры для /api/orbit_risk
+    const orbitParams = {
+        height: altitude,
+        A_effective: cross_section,
+        T_years: lifespan,
+        C_full: cost * 1000000,
+        D_lost: cost * 1000000 * (revenue_loss / 100)
+    };
 
-                // Параметры для /api/orbit_risk
-                const orbitParams = {
-                    height: altitude,
-                    A_effective: cross_section,
-                    T_years: lifespan,
-                    C_full: cost * 1000000,
-                    D_lost: cost * 1000000 * (revenue_loss / 100)
-                };
+    // Параметры для /api/takeoff_risk
+    const takeoffParams = {
+        lat: 45.96, // Космодром Байконур
+        lon: 63.30,
+        date: new Date().toISOString().slice(0, 19),
+        H_ascent: 200,
+        A_rocket: cross_section,
+        T_seconds: 540,
+        C_total_loss: cost * 1000000
+    };
 
-                // Параметры для /api/takeoff_risk (с разумными значениями по умолчанию)
-                const takeoffParams = {
-                    lat: 45.96, // Байконур
-                    lon: 63.30,
-                    date: new Date().toISOString().slice(0, 19), // Текущее время в формате YYYY-MM-DDTHH:MM:SS
-                    H_ascent: 200, // км
-                    A_rocket: cross_section, // Используем то же значение, что и для спутника
-                    T_seconds: 540, // 9 минут
-                    C_total_loss: cost * 1000000
-                };
+    const orbitQuery = new URLSearchParams(orbitParams).toString();
+    const takeoffQuery = new URLSearchParams(takeoffParams).toString();
 
-                const orbitQuery = new URLSearchParams(orbitParams).toString();
-                const takeoffQuery = new URLSearchParams(takeoffParams).toString();
+    try {
+        // Выполняем только два существующих запроса параллельно
+        const [orbitResponse, takeoffResponse] = await Promise.all([
+            fetch(`/api/orbit_risk?${orbitQuery}`),
+            fetch(`/api/takeoff_risk?${takeoffQuery}`)
+        ]);
 
-                try {
-                    // Выполняем оба запроса параллельно
-                    const [orbitResponse, takeoffResponse] = await Promise.all([
-                        fetch(`/api/orbit_risk?${orbitQuery}`),
-                        fetch(`/api/takeoff_risk?${takeoffQuery}`)
-                    ]);
+        // Проверяем, что оба ответа успешны
+        if (!orbitResponse.ok || !takeoffResponse.ok) {
+            console.error('API Error: Один или несколько запросов не удались.');
+            if (!orbitResponse.ok) console.error('Orbit API Error:', await orbitResponse.text());
+            if (!takeoffResponse.ok) console.error('Takeoff API Error:', await takeoffResponse.text());
+            throw new Error('Ошибка при запросе к API');
+        }
 
-                    if (!orbitResponse.ok || !takeoffResponse.ok) {
-                        console.error('API Error: One or more requests failed.');
-                        if (!orbitResponse.ok) console.error('Orbit API Error:', await orbitResponse.json());
-                        if (!takeoffResponse.ok) console.error('Takeoff API Error:', await takeoffResponse.json());
-                        return appState.results;
-                    }
+        const orbitData = await orbitResponse.json();
+        const takeoffData = await takeoffResponse.json();
 
-                    const orbitData = await orbitResponse.json();
-                    const takeoffData = await takeoffResponse.json();
+        // Обрабатываем данные из API
+        const launchRisk = parseRiskClass(takeoffData.risk_class);
+        const orbitalRisk = parseRiskClass(orbitData.risk_class);
 
-                    const orbitalRisk = parseRiskClass(orbitData.risk_class);
-                    const launchRisk = parseRiskClass(takeoffData.risk_class);
-                    const reentryRisk = { grade: 'A', gradeClass: 'grade-A' }; // Заглушка
-                    const mockReentryLoss = orbitParams.C_full * 0.005; // Заглушка
+        // Устанавливаем заглушки для отсутствующих данных по reentry, как вы просили
+        const reentryRisk = { grade: 'N/A', gradeClass: '' }; // Нет данных от API
 
-                    const financialLoss = {
-                        launch: Math.round(takeoffData.financial_risk),
-                        orbital: Math.round(orbitData.financial_risk),
-                        reentry: Math.round(mockReentryLoss),
-                    };
-                    financialLoss.total = financialLoss.launch + financialLoss.orbital + financialLoss.reentry;
+        const financialLoss = {
+            launch: Math.round(takeoffData.financial_risk || 0),
+            orbital: Math.round(orbitData.financial_risk || 0),
+            reentry: 0, // Устанавливаем финансовые потери при сходе в 0
+        };
+        financialLoss.total = financialLoss.launch + financialLoss.orbital + financialLoss.reentry;
 
-                    const totalInsurance = Math.round(takeoffData.insurance_premium + orbitData.insurance_premium);
+        const totalInsurance = Math.round((takeoffData.insurance_premium || 0) + (orbitData.insurance_premium || 0));
 
-                    return {
-                        launch: launchRisk,
-                        orbital: orbitalRisk,
-                        reentry: reentryRisk,
-                        financialLoss: financialLoss,
-                        insurancePremium: totalInsurance,
-                    };
+        // Возвращаем итоговый объект
+        return {
+            launch: launchRisk,
+            orbital: orbitalRisk,
+            reentry: reentryRisk,
+            financialLoss: financialLoss,
+            insurancePremium: totalInsurance,
+        };
 
-                } catch (error) {
-                    console.error('Fetch failed:', error);
-                    return appState.results;
-                }
-            }
+    } catch (error) {
+        console.error('Fetch failed:', error);
+        // В случае ошибки можно вернуть пустой или дефолтный объект, чтобы не ломать интерфейс
+        throw error;
+    }
+}
+
+/**
+ * Вспомогательная функция для преобразования класса риска.
+ * @param {string} riskClass - Класс риска (например, 'A', 'B').
+ * @returns {{grade: string, gradeClass: string}}
+ */
+function parseRiskClass(riskClass) {
+    if (!riskClass) {
+        return { grade: 'N/A', gradeClass: '' };
+    }
+    return {
+        grade: riskClass,
+        gradeClass: `grade-${riskClass}`
+    };
+}
+
 
             function animateCounter(element, targetValue, duration = 1500) {
                 const start = parseInt(element.textContent.replace(/[$\s,]/g, '')) || 0;
