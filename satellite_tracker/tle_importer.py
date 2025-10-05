@@ -1,42 +1,78 @@
 import requests
+import time
 from typing import List, Dict, Any
 
 
-def get_all_active_satellites() -> List[Dict[str, Any]]:
+def get_all_trackable_objects() -> List[Dict[str, Any]]:
     """
-    Загружает и парсит TLE-данные для всех активных спутников с CelesTrak.
+    Загружает и парсит TLE-данные для всех отслеживаемых объектов
+    (активные спутники, станции, мусор) с CelesTrak, используя
+    стабильный текстовый формат TLE.
     """
-    # URL для получения TLE всех активных спутников
-    url = "https://celestrak.org/NORAD/elements/gp.php?GROUP=active&FORMAT=tle"
+    base_url = "https://celestrak.org/NORAD/elements/gp.php"
 
-    satellites: List[Dict[str, Any]] = []
+    # URL-адреса для получения данных в формате TLE
+    urls = {
+        "active": f"{base_url}?GROUP=active&FORMAT=tle",
+        "stations": f"{base_url}?GROUP=stations&FORMAT=tle",
+        "rocket-bodies": f"{base_url}?GROUP=rocket-bodies&FORMAT=tle",
+        "cosmos-1408-debris": f"{base_url}?GROUP=cosmos-1408-debris&FORMAT=tle",
+        "iridium-33-debris": f"{base_url}?GROUP=iridium-33-debris&FORMAT=tle",
+        "cosmos-2251-debris": f"{base_url}?GROUP=cosmos-2251-debris&FORMAT=tle",
+        "fengyun-1c-debris": f"{base_url}?GROUP=fengyun-1c-debris&FORMAT=tle",
+        "dmsp-f13-debris": f"{base_url}?GROUP=dmsp-f13-debris&FORMAT=tle",
+        "breeze-m-debris": f"{base_url}?GROUP=breeze-m-debris&FORMAT=tle",
+        "debris": f"{base_url}?GROUP=DEBRIS&FORMAT=tle",
+        "decaying": f"{base_url}?SPECIAL=DECAYING&FORMAT=tle",
+    }
 
-    print(f"Загрузка данных с {url}...")
-    try:
-        response = requests.get(url)
-        # Проверка на ошибки HTTP
-        response.raise_for_status()
+    # Используем словарь для хранения уникальных объектов по их номеру, чтобы избежать дубликатов
+    unique_objects: Dict[int, Dict[str, Any]] = {}
 
-        # Разделяем весь текст на строки
-        lines = response.text.strip().splitlines()
-        print("Данные успешно загружены. Начинаю парсинг...")
+    for category, url in urls.items():
+        print(f"Загрузка данных из категории '{category}' с {url}...")
 
-        # TLE данные идут блоками по 3 строки: Имя, Строка 1, Строка 2
-        # Мы итерируемся с шагом 3
-        for i in range(0, len(lines), 3):
-            name = lines[i].strip()
-            line1 = lines[i + 1].strip()
-            line2 = lines[i + 2].strip()
+        # ДОБАВЛЕНО: Пауза в 1 секунду перед каждым запросом, чтобы не перегружать сервер CelesTrak
+        time.sleep(1)
 
-            # Извлекаем номер спутника из первой строки TLE
-            sat_num = int(line1[2:7])
+        try:
+            response = requests.get(url, timeout=90)
+            response.raise_for_status()
 
-            satellites.append(
-                {"name": name, "number": sat_num, "line1": line1, "line2": line2}
-            )
+            # Парсим ответ как простой текст
+            lines = response.text.strip().splitlines()
 
-        return satellites
+            print(f"Получено {len(lines) // 3} объектов из '{category}'.")
 
-    except requests.exceptions.RequestException as e:
-        print(f"Произошла ошибка при запросе: {e}")
-        return []
+            # TLE данные идут блоками по 3 строки: Имя, Строка 1, Строка 2
+            # Итерируемся с шагом 3
+            for i in range(0, len(lines), 3):
+                try:
+                    name = lines[i].strip()
+                    line1 = lines[i + 1].strip()
+                    line2 = lines[i + 2].strip()
+
+                    # Проверяем, что строки TLE имеют корректную длину
+                    if len(line1) != 69 or len(line2) != 69:
+                        continue
+
+                    # Извлекаем номер спутника из первой строки TLE
+                    sat_num = int(line1[2:7])
+
+                    unique_objects[sat_num] = {
+                        "name": name,
+                        "number": sat_num,
+                        "line1": line1,
+                        "line2": line2,
+                    }
+                except (IndexError, ValueError) as e:
+                    # Пропускаем некорректно сформированные TLE-блоки
+                    # print(f"Пропущен некорректный блок TLE в категории {category}: {e}")
+                    continue
+
+        except requests.exceptions.RequestException as e:
+            print(f"Произошла ошибка при запросе {url}: {e}")
+            continue
+
+    print(f"Загрузка завершена. Всего уникальных объектов: {len(unique_objects)}")
+    return list(unique_objects.values())

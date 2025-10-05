@@ -36,9 +36,14 @@ def calculate_satellite_position(
         # 1. Создание объекта EarthSatellite
         satellite = EarthSatellite(line1, line2, name, ts)
 
-        # 2. Преобразование объекта Python datetime в объект времени Skyfield (Time)
-        # Убеждаемся, что время в UTC
-        target_time = target_time.astimezone(timezone.utc)
+        # 2. Надежная обработка часовых поясов
+        # Если время "наивное" (без tzinfo), считаем, что оно уже в UTC.
+        if target_time.tzinfo is None:
+            target_time = target_time.replace(tzinfo=timezone.utc)
+        else:
+            # Если время уже с таймзоной, приводим его к UTC для единообразия.
+            target_time = target_time.astimezone(timezone.utc)
+
         t: Time = ts.utc(
             target_time.year,
             target_time.month,

@@ -5,6 +5,27 @@ import math
 R_EARTH_KM = 6371.0
 # Количество секунд в одном году
 SEC_PER_YEAR = 31536000
+# Коэффициент для расчета страховой премии (150%)
+INSURANCE_COEFFICIENT = 1.5
+
+
+def assign_risk_class(collision_probability: float) -> str:
+    """
+    Присваивает класс риска на основе вероятности столкновения.
+    """
+    if collision_probability > 1e-2:  # > 1%
+        return "F (Extremely High)"
+    if collision_probability > 1e-3:  # > 0.1%
+        return "E (Very High)"
+    if collision_probability > 1e-4:  # > 0.01%
+        return "D (High)"
+    if collision_probability > 1e-5:  # > 0.001%
+        return "C (Moderate)"
+    if collision_probability > 1e-6:  # > 0.0001%
+        return "B (Low)"
+    if collision_probability > 1e-7:  # > 0.00001%
+        return "A (Very Low)"
+    return "A+ (Minimal)"
 
 
 def calculate_collision_financial_risk(
@@ -20,29 +41,7 @@ def calculate_collision_financial_risk(
     """
     Рассчитывает ожидаемый финансовый риск (ФР) из-за столкновения
     космического аппарата с мусором за весь срок миссии.
-
-    Формула:
-    ФР = (1 - exp( -(N / V_shell) * V_отн * A * T_секунды )) * (Сполн + Дуп)
-
-    Где V_shell - объем сферической оболочки.
-
-    Аргументы:
-        N_objects (float): Общее число отслеживаемых объектов (спутников и мусора)
-                           в целевом орбитальном слое (N).
-        H_upper (float): Верхняя высота орбитальной оболочки (Hв, в км).
-        H_lower (float): Нижняя высота орбитальной оболочки (Hн, в км).
-        V_rel (float): Средняя относительная скорость столкновения (Vотн, в км/с).
-                       Типичное значение 10-15 км/с.
-        A_effective (float): Эффективная площадь поперечного сечения спутника (A, в м²).
-        T_years (float): Срок службы миссии в годах (Tлет).
-        C_full (float): Полная стоимость миссии (Сполн, в денежных единицах).
-        D_lost (float): Упущенный доход в случае потери спутника (Дуп, в денежных единицах).
-
-    Возвращает:
-        float: Ожидаемый финансовый риск (ФР) в тех же денежных единицах.
     """
-
-    # --- Часть 1: Расчет объема сферической оболочки (V_shell) ---
     R_upper = R_EARTH_KM + H_upper
     R_lower = R_EARTH_KM + H_lower
     V_shell = (4 / 3) * math.pi * (R_upper**3 - R_lower**3)
@@ -50,26 +49,30 @@ def calculate_collision_financial_risk(
     if V_shell <= 0:
         return {"error": "Invalid altitude range, shell volume is zero or negative."}
 
-    # --- Часть 2: Расчет ожидаемого числа столкновений (Expected_collisions) ---
     density = N_objects / V_shell
     T_seconds = T_years * SEC_PER_YEAR
-    A_effective_km2 = A_effective / 1_000_000  # Конвертация из м² в км²
+    A_effective_km2 = A_effective / 1_000_000
 
     expected_collisions = density * V_rel * A_effective_km2 * T_seconds
-
-    # --- Часть 3: Расчет вероятности столкновения (P_collision) ---
     P_collision = 1.0 - math.exp(-expected_collisions)
 
-    # --- Часть 4: Расчет итогового финансового риска (ФР) ---
     total_cost_at_risk = C_full + D_lost
     financial_risk = P_collision * total_cost_at_risk
+    insurance_premium = financial_risk * INSURANCE_COEFFICIENT
+    risk_class = assign_risk_class(P_collision)
 
-    return {"financial_risk": round(financial_risk, 2), "collision_risk": P_collision}
+    return {
+        "financial_risk": round(financial_risk, 2),
+        "collision_risk": P_collision,
+        "insurance_premium": round(insurance_premium, 2),
+        "risk_class": risk_class,
+    }
 
 
 def calculate_launch_collision_risk(
     N_objects: float,
     H_ascent: float,
+    launch_cylinder_radius_m: int,
     V_rel: float,
     A_rocket: float,
     T_seconds: float,
@@ -78,42 +81,31 @@ def calculate_launch_collision_risk(
     """
     Рассчитывает ожидаемый финансовый риск (ФР) из-за столкновения
     ракеты-носителя или спутника с мусором во время активного участка выведения.
-
-    Формула:
-    ФР = (1 - exp( - (N / V_corridor) * V_отн * A_ракета * T_секунды )) * C_total_loss
-
-    Аргументы:
-        N_objects (float): Общее число объектов (N) в объеме от Rз до Rз + H_ascent.
-        H_ascent (float): Максимальная высота подъема (H_подъема, в км).
-        V_rel (float): Средняя относительная скорость столкновения (V_отн, в км/с).
-        A_rocket (float): Эффективная площадь поперечного сечения ракеты (A_ракета, в м²).
-        T_seconds (float): Общее время пролета до H_ascent в секундах (T_пролета_сек).
-        C_total_loss (float): Сумма полной стоимости спутника и ракеты
-                              (С_спутника + С_ракеты, в денежных единицах).
-
-    Возвращает:
-        float: Ожидаемый финансовый риск (ФР) при запуске.
     """
-
-    # --- Часть 1: Расчет объема коридора выведения (V_corridor) ---
-    R_upper = R_EARTH_KM + H_ascent
-    V_corridor = (4 / 3) * math.pi * (R_upper**3 - R_EARTH_KM**3)
+    # Объем считается как объем цилиндра
+    # launch_cylinder_radius_m переводится в км для соответствия с H_ascent
+    launch_cylinder_radius_km = launch_cylinder_radius_m / 1000.0
+    V_corridor = math.pi * (launch_cylinder_radius_km**2) * H_ascent
 
     if V_corridor <= 0:
         return {
-            "error": "Invalid ascent altitude, corridor volume is zero or negative."
+            "error": "Invalid ascent altitude or radius, corridor volume is zero or negative."
         }
 
-    # --- Часть 2: Расчет ожидаемого числа столкновений (Expected_collisions) ---
     density = N_objects / V_corridor
-    A_rocket_km2 = A_rocket / 1_000_000  # Конвертация из м² в км²
+    A_rocket_km2 = A_rocket / 1_000_000
 
     expected_collisions = density * V_rel * A_rocket_km2 * T_seconds
-
-    # --- Часть 3: Расчет вероятности столкновения (P_collision) ---
     P_collision = 1.0 - math.exp(-expected_collisions)
-
-    # --- Часть 4: Расчет итогового финансового риска (ФР) ---
     financial_risk = P_collision * C_total_loss
 
-    return {"financial_risk": round(financial_risk, 2), "collision_risk": P_collision}
+    insurance_premium = financial_risk * INSURANCE_COEFFICIENT
+    risk_class = assign_risk_class(P_collision)
+
+    return {
+        "financial_risk": round(financial_risk, 2),
+        "collision_risk": P_collision,
+        "insurance_premium": round(insurance_premium, 2),
+        "risk_class": risk_class,
+    }
+

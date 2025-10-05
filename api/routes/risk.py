@@ -1,10 +1,10 @@
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 from sanic import Blueprint
 from sanic.response import json
 
 from satellite_tracker import (
-    get_all_active_satellites,
+    get_all_trackable_objects,
     calculate_orbit_congestion_by_altitude,
     calculate_satellite_position,
 )
@@ -14,7 +14,7 @@ from utils.risk_calculator import (
     calculate_launch_collision_risk,
 )
 
-bp = Blueprint("risks", url_prefix="/")
+bp = Blueprint("risks", url_prefix="/api")
 
 
 @bp.get("/orbit_risk")
@@ -29,35 +29,44 @@ async def orbit_collision_risk(request):
         required: true
         schema:
           type: integer
+          example: 550
       - name: A_effective
         in: query
         description: Эффективная площадь поперечного сечения (м^2)
+        required: true
         schema:
-          type: float
+          type: number
+          format: float
+          example: 1.5
       - name: T_years
         in: query
         description:  Срок службы миссии в годах
         required: true
         schema:
           type: integer
+          example: 5
       - name: C_full
         in: query
         description: Полная стоимость миссии
         required: true
         schema:
           type: integer
+          example: 50000000
       - name: D_lost
         in: query
         description:  Упущенный доход в случае потери спутника
         required: true
         schema:
           type: integer
+          example: 100000000
       - name: V_rel
         in: query
         description: Средняя относительная скорость столкновения (км/c)
         required: false
         schema:
-          type: float
+          type: number
+          format: float
+          example: 12.5
     """
     try:
         height = float(request.args["height"][0])
@@ -69,16 +78,14 @@ async def orbit_collision_risk(request):
             float(request.args.get("V_rel")[0]) if request.args.get("V_rel") else 12.5
         )
 
-        all_objects = get_all_active_satellites()
-        # Теперь функция возвращает (congestion_map, filtered_satellites)
+        all_objects = get_all_trackable_objects()
         congestion_map, _ = calculate_orbit_congestion_by_altitude(
             all_objects, height - 50, height + 50, 0, 180
         )
 
-        # Считаем общее количество объектов из карты загруженности
         total_objects_in_layer = sum(data["count"] for data in congestion_map.values())
 
-        orbit_risk = calculate_collision_financial_risk(
+        orbit_risk_data = calculate_collision_financial_risk(
             total_objects_in_layer,
             height + 50,
             height - 50,
@@ -89,7 +96,7 @@ async def orbit_collision_risk(request):
             d_lost,
         )
 
-        return json(orbit_risk)
+        return json(orbit_risk_data)
 
     except KeyError as e:
         return json({"message": f"Missing required parameter: {e.args[0]}"}, status=400)
@@ -108,26 +115,34 @@ async def takeoff_collision_risk(request):
     parameters:
         - name: lat
           in: query
-          description: Широта мест азапуска
-          required: false
+          description: Широта места запуска. Для расчета риска этот параметр теперь ОБЯЗАТЕЛЕН.
+          required: true
           schema:
-            type: float
-            example: 49.99345
+            type: number
+            format: float
+            example: 45.96
         - name: lon
           in: query
-          description: долгота мест азапуска
-          required: false
+          description: Долгота места запуска. Для расчета риска этот параметр теперь ОБЯЗАТЕЛЕН.
+          required: true
           schema:
-            type: float
-            example: 49.99345
+            type: number
+            format: float
+            example: 63.30
         - name: date
           in: query
-          description: Дата запуска миссии
+          description: Дата и время запуска (UTC) в формате YYYY-MM-DDTHH:MM:SS. Для расчета риска этот параметр теперь ОБЯЗАТЕЛЕН.
           required: true
           schema:
             type: string
-            example: "2025-10-04"
-
+            example: "2025-10-04T12:00:00"
+        - name: launch_radius_meters
+          in: query
+          description: Радиус (в метрах) цилиндрического коридора запуска для обнаружения объектов.
+          required: false
+          schema:
+            type: string
+            example: "50000"
         - name: H_ascent
           in: query
           description: Высота (км), на которой заканчивается активный участок полета ракеты.
@@ -136,16 +151,14 @@ async def takeoff_collision_risk(request):
             type: number
             format: float
             example: 200.5
-
         - name: V_rel
           in: query
-          description: Средняя относительная скорость столкновения (V_отн, в км/с).
+          description: Средняя относительная скорость столкновения (V_отн, в км/с). Типичное значение для НОО ~7.8 км/с.
           required: false
           schema:
             type: number
             format: float
-            example: 7800.25
-
+            example: 7.8
         - name: A_rocket
           in: query
           description: Эффективная площадь поперечного сечения ракеты (м²).
@@ -154,69 +167,93 @@ async def takeoff_collision_risk(request):
             type: number
             format: float
             example: 15.8
-
         - name: T_seconds
           in: query
-          description: Продолжительность (секунды) определенного полета.
+          description: Продолжительность (секунды) активного участка полета.
           required: true
           schema:
             type: number
             format: float
             example: 540.0
-
         - name: C_total_loss
           in: query
-          description: Суммарные потери фиаско.
+          description: Суммарные потери при неудачном запуске.
           required: true
           schema:
             type: number
             format: float
-            example: 1800.75
+            example: 50000000
     """
     try:
-        date_str = request.args["date"][0]
         h_ascent = float(request.args["H_ascent"][0])
         a_rocket = float(request.args["A_rocket"][0])
         t_seconds = float(request.args["T_seconds"][0])
         c_total_loss = float(request.args["C_total_loss"][0])
-        lat = float(request.args.get("lat")[0]) if request.args.get("lat") else None
-        lon = float(request.args.get("lon")[0]) if request.args.get("lon") else None
-        v_rel = (
-            float(request.args.get("V_rel")[0]) if request.args.get("V_rel") else 12.5
-        )
+        lat = float(request.args["lat"][0])
+        lon = float(request.args["lon"][0])
+        date_str = request.args["date"][0]
 
-        # Теперь функция возвращает (congestion_map, filtered_satellites)
-        # Нам нужен список отфильтрованных спутников для дальнейшей обработки
+        launch_cylinder_radius_m = int(request.args.get("launch_radius_meters", ["50000"])[0])
+
+        v_rel = float(request.args.get("V_rel", [12.5])[0])
+
         _, filtered_satellites = calculate_orbit_congestion_by_altitude(
-            get_all_active_satellites(), 0, h_ascent, 0, 180
+            get_all_trackable_objects(), 0, h_ascent, 0, 180
         )
 
-        N_objects = 0
-        if lat is not None and lon is not None:
-            launch_date = datetime.strptime(date_str, "%Y-%m-%d")
-            for sat_data in filtered_satellites:  # Используем отфильтрованный список
-                position = calculate_satellite_position(sat_data, launch_date)
-                if quick_distance(position["lat"], position["lon"], lat, lon) < 10000:
-                    N_objects += 1
-        else:
-            # Если lat/lon не предоставлены, считаем все объекты в диапазоне высот
-            N_objects = len(filtered_satellites)
+        launch_date = None
+        for fmt in ("%Y-%m-%dT%H:%M:%S", "%Y-%m-%d"):
+            try:
+                launch_date = datetime.strptime(date_str, fmt)
+                break
+            except ValueError:
+                continue
 
-        orbit_risk = calculate_launch_collision_risk(
+        if launch_date is None:
+            return json(
+                {"message": f"Invalid date format for '{date_str}'. Use YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS."},
+                status=400,
+            )
+
+        if launch_date.tzinfo is None:
+            launch_date = launch_date.replace(tzinfo=timezone.utc)
+
+        dangerous_satellite_ids = set()
+        time_step_seconds = 60
+
+        for time_offset in range(0, int(t_seconds) + 1, time_step_seconds):
+            current_time = launch_date + timedelta(seconds=time_offset)
+            for sat_data in filtered_satellites:
+                try:
+                    position = calculate_satellite_position(sat_data, current_time)
+                    distance_m = quick_distance(position["lat"], position["lon"], lat, lon)
+                    if distance_m < launch_cylinder_radius_m:
+                        dangerous_satellite_ids.add(sat_data.get("number"))
+                except Exception:
+                    continue
+
+        N_objects = len(dangerous_satellite_ids)
+
+        takeoff_risk_data = calculate_launch_collision_risk(
             N_objects,
             h_ascent,
+            launch_cylinder_radius_m,
             v_rel,
             a_rocket,
             t_seconds,
             c_total_loss,
         )
 
-        return json(orbit_risk)
+        takeoff_risk_data['objects_in_corridor'] = N_objects
+        takeoff_risk_data['launch_corridor_radius_km'] = launch_cylinder_radius_m / 1000
+
+        return json(takeoff_risk_data)
 
     except KeyError as e:
         return json({"message": f"Missing required parameter: {e.args[0]}"}, status=400)
-    except (ValueError, TypeError):
+    except (ValueError, TypeError, AttributeError) as e:
         return json(
-            {"message": "Invalid parameter type. Please provide valid numbers."},
+            {"message": f"Invalid or missing parameter type. Please provide valid numbers. Error: {e}"},
             status=400,
         )
+

@@ -1,7 +1,7 @@
 from sanic import Blueprint
 from sanic.response import json
 
-bp = Blueprint("health", url_prefix="/")
+bp = Blueprint("health", url_prefix="/api")
 
 
 @bp.get("/health")
